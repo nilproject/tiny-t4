@@ -40,8 +40,16 @@ namespace tiny_t4
             foreach (var file in files)
             {
                 var targetExtension = "cs";
+                var targetFileName = Path.ChangeExtension(file, targetExtension);
+
+                if (File.GetLastWriteTime(file) < File.GetLastWriteTime(targetFileName))
+                {
+                    continue;
+                }
+
                 var code = File.ReadAllText(file);
                 var transformResult = transform(code);
+
                 var scriptOptions = ScriptOptions.Default;
                 scriptOptions = scriptOptions.AddReferences(Assembly.GetExecutingAssembly());
                 foreach (var directive in transformResult.Directives)
@@ -56,13 +64,6 @@ namespace tiny_t4
                     }
                 }
 
-                var targetFileName = Path.ChangeExtension(file, targetExtension);
-
-                if (File.GetLastWriteTime(file) < File.GetLastWriteTime(targetFileName))
-                {
-                    continue;
-                }
-
                 StreamWriter writter = null;
                 if (!toStdOut)
                 {
@@ -71,25 +72,46 @@ namespace tiny_t4
                 }
 
                 code = transformResult.Code;
-                code = $"static readonly tiny_t4.{ nameof(Host) } Host = new tiny_t4.{ nameof(Host) }(\"{ Path.GetFullPath(file) }\");\n" + code;
-                var script = CSharpScript.Create(code, scriptOptions);
-                script.Compile();
-                script.CreateDelegate().Invoke().ContinueWith((result) =>
-                {
-                    if (!result.IsCompletedSuccessfully)
-                    {
-                        Console.Error.WriteLine(result.Exception);
-                    }
-                    else
-                    {
-                        Console.WriteLine(result.Result);
-                    }
-                })
-                .Wait();
+                code = $"static readonly tiny_t4.{ nameof(Host) } Host = new tiny_t4.{ nameof(Host) }(@\"{ Path.GetFullPath(file) }\");\n" + code;
 
-                if (!toStdOut)
+                try
                 {
-                    writter.Dispose();
+                    var script = CSharpScript.Create(code, scriptOptions);
+                    script.Compile();
+                    script.CreateDelegate().Invoke().ContinueWith((result) =>
+                    {
+                        if (!result.IsCompletedSuccessfully)
+                        {
+                            Console.Error.WriteLine(result.Exception);
+                        }
+                        else
+                        {
+                            Console.WriteLine(result.Result);
+                        }
+                    })
+                    .Wait();
+                }
+                catch (Exception e)
+                {
+                    var innerException = e.InnerException;
+                    while (innerException != null)
+                    {
+                        Console.Error.WriteLine(innerException.GetType().Name);
+                        Console.Error.WriteLine(innerException.StackTrace);
+                        Console.Error.WriteLine(innerException.Message);
+                        innerException = e.InnerException;
+                    }
+
+                    File.WriteAllText(Path.ChangeExtension(file, "debug_error." + targetExtension), code);
+
+                    throw;
+                }
+                finally
+                {
+                    if (!toStdOut)
+                    {
+                        writter.Dispose();
+                    }
                 }
             }
         }
