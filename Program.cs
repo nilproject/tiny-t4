@@ -35,7 +35,12 @@ namespace tiny_t4
             else
             {
                 files = Directory.EnumerateFiles(".", "*.tt", SearchOption.AllDirectories).ToArray();
+
+                Console.WriteLine("Found files:" + Environment.NewLine + string.Join(Environment.NewLine, files));
+                Console.WriteLine();
             }
+
+            var originalConsoleOutput = new StreamWriter(Console.OpenStandardOutput());
 
             foreach (var file in files)
             {
@@ -44,8 +49,13 @@ namespace tiny_t4
 
                 if (File.GetLastWriteTime(file) < File.GetLastWriteTime(targetFileName))
                 {
+                    originalConsoleOutput.WriteLine("Skipped: " + file);
+                    originalConsoleOutput.Flush();
                     continue;
                 }
+
+                originalConsoleOutput.WriteLine("Processing: " + file);
+                originalConsoleOutput.Flush();
 
                 var code = File.ReadAllText(file);
                 var transformResult = transform(code);
@@ -90,6 +100,9 @@ namespace tiny_t4
                         }
                     })
                     .Wait();
+
+                    originalConsoleOutput.WriteLine("Done: " + file);
+                    originalConsoleOutput.Flush();
                 }
                 catch (Exception e)
                 {
@@ -103,6 +116,8 @@ namespace tiny_t4
                     }
 
                     File.WriteAllText(Path.ChangeExtension(file, "debug_error." + targetExtension), code);
+
+                    Console.WriteLine("Error: " + e.Message);
 
                     throw;
                 }
