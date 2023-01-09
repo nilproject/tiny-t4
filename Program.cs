@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Reflection;
@@ -25,15 +26,19 @@ namespace tiny_t4
 
         static void Main(string[] args)
         {
+            var forceRebgen = args.Contains("--force");
             var toStdOut = false;
             string[] files = null;
-            if (args.Length > 0)
-            {
-                files = args;
+            files = args.Where(x => !x.StartsWith("--")).ToArray();
+            if (files.Length > 0)
+            {                
                 toStdOut = true;
+
+                Console.WriteLine("Files to process: " + string.Join(Environment.NewLine, files));
             }
             else
             {
+                Console.WriteLine("Current directory: " + Directory.GetCurrentDirectory());
                 files = Directory.EnumerateFiles(".", "*.tt", SearchOption.AllDirectories).ToArray();
 
                 Console.WriteLine("Found files:" + Environment.NewLine + string.Join(Environment.NewLine, files));
@@ -47,13 +52,14 @@ namespace tiny_t4
                 var targetExtension = "cs";
                 var targetFileName = Path.ChangeExtension(file, targetExtension);
 
-                if (File.GetLastWriteTime(file) < File.GetLastWriteTime(targetFileName))
+                if (File.GetLastWriteTime(file) < File.GetLastWriteTime(targetFileName) && !forceRebgen)
                 {
                     originalConsoleOutput.WriteLine("Skipped: " + file);
                     originalConsoleOutput.Flush();
                     continue;
                 }
 
+                var fileProcessingStopWatch = Stopwatch.StartNew();
                 originalConsoleOutput.WriteLine("Processing: " + file);
                 originalConsoleOutput.Flush();
 
@@ -67,10 +73,10 @@ namespace tiny_t4
                     switch (directive.Key)
                     {
                         case "import namespace":
-                            {
-                                scriptOptions = scriptOptions.AddImports(directive.Value);
-                                break;
-                            }
+                        {
+                            scriptOptions = scriptOptions.AddImports(directive.Value);
+                            break;
+                        }
                     }
                 }
 
@@ -82,7 +88,7 @@ namespace tiny_t4
                 }
 
                 code = transformResult.Code;
-                code = $"static readonly tiny_t4.{ nameof(Host) } Host = new tiny_t4.{ nameof(Host) }(@\"{ Path.GetFullPath(file) }\");\n" + code;
+                code = $"static readonly tiny_t4.{nameof(Host)} Host = new tiny_t4.{nameof(Host)}(@\"{Path.GetFullPath(file)}\");\n" + code;
 
                 try
                 {
@@ -101,7 +107,7 @@ namespace tiny_t4
                     })
                     .Wait();
 
-                    originalConsoleOutput.WriteLine("Done: " + file);
+                    originalConsoleOutput.WriteLine("Done: " + file + ". Elapsed: " + fileProcessingStopWatch.Elapsed);
                     originalConsoleOutput.Flush();
                 }
                 catch (Exception e)
